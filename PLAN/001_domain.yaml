@@ -1,0 +1,324 @@
+botecopro_domain:
+  version: 1.0
+  description: "BotecoPro Unified Domain Model - Language Agnostic"
+
+  metadata:
+    offline_first: true
+    uuid_primary: ["comanda", "domain_event"]
+    money_unit: "cents"
+    timestamps: "iso8601"
+    sync_fields: ["last_modified", "dirty", "origin_device"]
+
+  enums:
+    ItemType: ["dish", "drink", "article"]
+    OrderStatus: ["open", "preparing", "ready", "delivered", "cancelled"]
+    ComandaStatus: ["open", "closed", "cancelled"]
+    TicketStatus: ["new", "cooking", "ready", "delivered"]
+    PaymentMethod: ["cash", "card", "pix", "voucher", "tab"]
+    MovementType: ["in", "out", "adjustment"]
+    OriginType: ["table", "takeaway", "delivery"]
+
+  entities:
+
+    ############################################################
+    # CATEGORY
+    ############################################################
+    Category:
+      attributes:
+        id: { type: int, primary: true }
+        name: { type: string, required: true }
+      methods: []
+
+    Subcategory:
+      attributes:
+        id: { type: int, primary: true }
+        name: { type: string, required: true }
+        category_id: { type: relation, target: Category }
+      methods: []
+
+    ############################################################
+    # PRODUCT (INGREDIENT)
+    ############################################################
+    Product:
+      attributes:
+        id: { type: int, primary: true }
+        name: { type: string, required: true }
+        description: { type: string }
+        cost_price_cents: { type: int }
+        stock_current: { type: float }
+        stock_minimum: { type: float }
+        unit: { type: string }
+        product_type: { type: string }
+        active: { type: bool }
+        last_modified: { type: timestamp }
+        dirty: { type: bool }
+        origin_device: { type: string }
+      methods:
+        - calculate_stock_value
+
+    Supplier:
+      attributes:
+        id: { type: int, primary: true }
+        name: { type: string, required: true }
+        email: { type: string }
+        phone: { type: string }
+        notes: { type: string }
+      methods: []
+
+    SupplierProduct:
+      attributes:
+        product_id: { type: relation, target: Product }
+        supplier_id: { type: relation, target: Supplier }
+        price_cents: { type: int }
+        notes: { type: string }
+      primary_key: ["product_id", "supplier_id"]
+      methods: []
+
+    ############################################################
+    # MENU ITEMS
+    ############################################################
+    Item:
+      attributes:
+        id: { type: int, primary: true }
+        name: { type: string, required: true }
+        description: { type: string }
+        sale_price_cents: { type: int }
+        unit_cost_cents: { type: int }
+        prep_time_min: { type: int }
+        item_type: { type: enum, enum: ItemType }
+        category_id: { type: relation, target: Category }
+        subcategory_id: { type: relation, target: Subcategory }
+        active: { type: bool }
+        notes: { type: string }
+        last_modified: { type: timestamp }
+        dirty: { type: bool }
+        origin_device: { type: string }
+      methods:
+        - calculate_price
+        - calculate_cost
+
+    ItemProduct:
+      attributes:
+        item_id: { type: relation, target: Item }
+        product_id: { type: relation, target: Product }
+        quantity: { type: float }
+      primary_key: ["item_id", "product_id"]
+      methods: []
+
+    ############################################################
+    # TABLES
+    ############################################################
+    DiningTable:
+      attributes:
+        id: { type: int, primary: true }
+        table_num: { type: int, required: true }
+        seats: { type: int }
+        available: { type: bool }
+      methods:
+        - mark_available
+        - mark_unavailable
+
+    ############################################################
+    # COMANDA
+    ############################################################
+    Comanda:
+      attributes:
+        id: { type: uuid, primary: true }
+        table_id: { type: relation, target: DiningTable }
+        status: { type: enum, enum: ComandaStatus }
+        opened_at: { type: timestamp }
+        closed_at: { type: timestamp }
+        subtotal_cents: { type: int }
+        total_cents: { type: int }
+        notes: { type: string }
+        last_modified: { type: timestamp }
+        dirty: { type: bool }
+        origin_device: { type: string }
+      methods:
+        - calculate_totals
+        - close
+        - reopen
+
+    ############################################################
+    # EMPLOYEES & CUSTOMERS
+    ############################################################
+    Employee:
+      attributes:
+        id: { type: int, primary: true }
+        name: { type: string }
+        role: { type: string }
+        email: { type: string }
+        hourly_rate_cents: { type: int }
+      methods:
+        - clock_in
+        - clock_out
+
+    Customer:
+      attributes:
+        id: { type: int, primary: true }
+        name: { type: string }
+        customer_type: { type: string }
+      methods: []
+
+    ############################################################
+    # ORDER HEADER
+    ############################################################
+    Order:
+      attributes:
+        id: { type: int, primary: true }
+        comanda_id: { type: relation, target: Comanda }
+        employee_id: { type: relation, target: Employee }
+        customer_id: { type: relation, target: Customer }
+        origin: { type: enum, enum: OriginType }
+        status: { type: enum, enum: OrderStatus }
+        created_at: { type: timestamp }
+        notes: { type: string }
+        last_modified: { type: timestamp }
+        dirty: { type: bool }
+        origin_device: { type: string }
+      methods:
+        - add_item
+        - remove_item
+        - change_status
+        - total
+
+    ############################################################
+    # ORDER ITEMS
+    ############################################################
+    OrderItem:
+      attributes:
+        id: { type: int, primary: true }
+        order_id: { type: relation, target: Order }
+        item_id: { type: relation, target: Item }
+        quantity: { type: int }
+        unit_price_cents: { type: int }
+        discount_percent: { type: float }
+        tax_percent: { type: float }
+        total_cents: { type: int }
+        notes: { type: string }
+        last_modified: { type: timestamp }
+        dirty: { type: bool }
+        origin_device: { type: string }
+      methods:
+        - subtotal
+        - apply_discount
+
+    ############################################################
+    # INVOICE
+    ############################################################
+    Invoice:
+      attributes:
+        id: { type: int, primary: true }
+        comanda_id: { type: relation, target: Comanda }
+        subtotal_cents: { type: int }
+        tax_total_cents: { type: int }
+        total_cents: { type: int }
+        closed_at: { type: timestamp }
+      methods:
+        - generate
+        - archive
+
+    ############################################################
+    # PAYMENTS
+    ############################################################
+    Payment:
+      attributes:
+        id: { type: int, primary: true }
+        comanda_id: { type: relation, target: Comanda }
+        method: { type: enum, enum: PaymentMethod }
+        amount_cents: { type: int }
+        received_at: { type: timestamp }
+        notes: { type: string }
+      methods:
+        - refund
+
+    PaymentSplit:
+      attributes:
+        id: { type: int, primary: true }
+        payment_id: { type: relation, target: Payment }
+        payee_name: { type: string }
+        amount_cents: { type: int }
+      methods: []
+
+    ############################################################
+    # STOCK MOVEMENTS
+    ############################################################
+    StockMovement:
+      attributes:
+        id: { type: int, primary: true }
+        product_id: { type: relation, target: Product }
+        quantity: { type: float }
+        movement_type: { type: enum, enum: MovementType }
+        reason: { type: string }
+        related_order_item: { type: relation, target: OrderItem }
+        created_at: { type: timestamp }
+      methods:
+        - apply
+
+    ############################################################
+    # KITCHEN / BAR TICKETS
+    ############################################################
+    KitchenTicket:
+      attributes:
+        id: { type: int, primary: true }
+        order_id: { type: relation, target: Order }
+        status: { type: enum, enum: TicketStatus }
+        created_at: { type: timestamp }
+      methods:
+        - advance
+        - mark_ready
+
+    KitchenTicketItem:
+      attributes:
+        id: { type: int, primary: true }
+        ticket_id: { type: relation, target: KitchenTicket }
+        order_item_id: { type: relation, target: OrderItem }
+      methods: []
+
+  ############################################################
+  # DOMAIN EVENTS (DDD)
+  ############################################################
+  events:
+    OrderOpened:
+      aggregate: Order
+      payload:
+        order_id: int
+        comanda_id: uuid
+        table_id: int
+        employee_id: int
+
+    ItemAdded:
+      aggregate: Order
+      payload:
+        order_item_id: int
+        order_id: int
+        item_id: int
+        quantity: int
+
+    ItemStatusChanged:
+      aggregate: OrderItem
+      payload:
+        order_item_id: int
+        from: string
+        to: string
+
+    OrderClosed:
+      aggregate: Order
+      payload:
+        order_id: int
+        total_cents: int
+
+    PaymentReceived:
+      aggregate: Payment
+      payload:
+        payment_id: int
+        comanda_id: uuid
+        amount_cents: int
+        method: string
+
+    StockConsumed:
+      aggregate: StockMovement
+      payload:
+        product_id: int
+        quantity: float
+        order_item_id: int

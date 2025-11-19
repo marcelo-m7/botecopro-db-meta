@@ -1,4 +1,4 @@
-BotecoPro metamodel - COMPLETE
+BotecoPro metamodel - DRAFT
 ================================
 
 Location: /mnt/data/botecopro-db-meta
