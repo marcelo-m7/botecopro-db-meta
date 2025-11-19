@@ -1,214 +1,208 @@
+-- BOTECOPRO — SQLite DATABASE SCHEMA (Professional Version)
+-- All tables carefully revised for offline-first operations
+-- Language: English
+-- Notes:
+--  * SQLite AUTO-INCREMENT uses INTEGER PRIMARY KEY
+--  * UUIDs stored as TEXT, generated at app layer
+--  * All timestamps use TEXT (ISO-8601) with CURRENT_TIMESTAMP
+--  * All foreign keys enforce cascade rules as needed for data integrity
 
+PRAGMA foreign_keys = ON;
 
--- Esquema Relacional com IDENTITY para chaves primárias
-
-CREATE TABLE Categoria (
-    id_categoria INT IDENTITY(1,1) PRIMARY KEY,
-    nome VARCHAR(100) NOT NULL
+------------------------------------------------------------------------------
+-- CATEGORY & SUBCATEGORY
+------------------------------------------------------------------------------
+CREATE TABLE category (
+    category_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL
 );
 
-CREATE TABLE Sub_Categoria (
-    id_sub_categoria INT IDENTITY(1,1) PRIMARY KEY,
-    id_categoria INT,
-    nome VARCHAR(100) NOT NULL,
-    FOREIGN KEY (id_categoria) REFERENCES Categoria(id_categoria)   
+CREATE TABLE subcategory (
+    subcategory_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    category_id     INTEGER NOT NULL,
+    name            TEXT NOT NULL,
+    FOREIGN KEY (category_id) REFERENCES category(category_id)
+        ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
-CREATE TABLE Fornecedor (
-    id_fornecedor INT IDENTITY(1,1) PRIMARY KEY,
-    nome VARCHAR(100) NOT NULL,
-    email VARCHAR(100),
-    telefone VARCHAR(20),
-    observacoes TEXT
+------------------------------------------------------------------------------
+-- PRODUCTS / INGREDIENTS
+------------------------------------------------------------------------------
+CREATE TABLE product (
+    product_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    description     TEXT,
+    cost_price      REAL,
+    stock_current   INTEGER DEFAULT 0,
+    stock_minimum   INTEGER DEFAULT 0,
+    unit            TEXT,               -- g, kg, ml, unit
+    product_type    TEXT,               -- ingredient, resale, etc.
+    active          INTEGER DEFAULT 1
 );
 
-CREATE TABLE Produto (
-    id_produto INT IDENTITY(1,1) PRIMARY KEY,
-    nome VARCHAR(100) NOT NULL,
-    descricao TEXT,
-    preco_custo DECIMAL(10,2),
-    -- preco_venda DECIMAL(10,2),
-    stock_atual INT,
-    stock_minimo INT,
-    ativo BIT DEFAULT 1,
-    -- quantidade_encomenda INT,
-    -- data_ultima_encomenda DATE,
+CREATE TABLE supplier (
+    supplier_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    email           TEXT,
+    phone           TEXT,
+    notes           TEXT
 );
 
-CREATE TABLE Produto_Fornecedor (
-    id_produto INT,
-    id_fornecedor INT,
-    preco_fornecedor DECIMAL(10,2),
-    observacoes TEXT,
-    PRIMARY KEY (id_produto, id_fornecedor),
-    FOREIGN KEY (id_produto) REFERENCES Produto(id_produto),
-    FOREIGN KEY (id_fornecedor) REFERENCES Fornecedor(id_fornecedor)
+-- Supplier price list and association
+CREATE TABLE supplier_product (
+    product_id      INTEGER NOT NULL,
+    supplier_id     INTEGER NOT NULL,
+    price           REAL,
+    notes           TEXT,
+
+    PRIMARY KEY (product_id, supplier_id),
+
+    FOREIGN KEY (product_id) REFERENCES product(product_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (supplier_id) REFERENCES supplier(supplier_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE TABLE Prato (
-    id_prato INT IDENTITY(1,1) PRIMARY KEY,
-    nome VARCHAR(100) NOT NULL,
-    descricao TEXT,
-    preco_venda DECIMAL(10,2),
-    custo_unidade DECIMAL(10,2),
-    tempo_preparo TIME,
-    id_categoria INT,
-    id_sub_categoria INT,
-    ativo BIT DEFAULT 1,
-    observacoes TEXT,
-    FOREIGN KEY (id_categoria) REFERENCES Categoria(id_categoria),
-    FOREIGN KEY (id_sub_categoria) REFERENCES Sub_Categoria(id_sub_categoria)
+------------------------------------------------------------------------------
+-- ITEM (Menu item: dish / drink / article)
+------------------------------------------------------------------------------
+CREATE TABLE item (
+    item_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    description     TEXT,
+    sale_price      REAL,
+    unit_cost       REAL,
+    prep_time_min   INTEGER,            -- in minutes
+    item_type       TEXT NOT NULL CHECK (item_type IN ('dish','drink','article')),
+    category_id     INTEGER,
+    subcategory_id  INTEGER,
+    active          INTEGER DEFAULT 1,
+    notes           TEXT,
+
+    FOREIGN KEY (category_id) REFERENCES category(category_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    FOREIGN KEY (subcategory_id) REFERENCES subcategory(subcategory_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
 );
 
-CREATE TABLE Bebida (
-    id_bebida INT IDENTITY(1,1) PRIMARY KEY,
-    nome VARCHAR(100) NOT NULL,
-    descricao TEXT,
-    preco_venda DECIMAL(10,2),
-    custo_unidade DECIMAL(10,2),
-    tempo_preparo TIME,
-    id_categoria INT,
-    id_sub_categoria INT,
-    ativo BIT DEFAULT 1,
-    observacoes TEXT,
-    FOREIGN KEY (id_categoria) REFERENCES Categoria(id_categoria),
-    FOREIGN KEY (id_sub_categoria) REFERENCES Sub_Categoria(id_sub_categoria)
+-- Composition: item uses multiple products
+CREATE TABLE item_product (
+    item_id     INTEGER NOT NULL,
+    product_id  INTEGER NOT NULL,
+    quantity    REAL NOT NULL,
+
+    PRIMARY KEY (item_id, product_id),
+
+    FOREIGN KEY (item_id) REFERENCES item(item_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES product(product_id)
+        ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
-CREATE TABLE Artigo (
-    id_artigo INT IDENTITY(1,1) PRIMARY KEY,
-    nome VARCHAR(100) NOT NULL,
-    descricao TEXT,
-    preco_venda DECIMAL(10,2),
-    custo_unidade DECIMAL(10,2),
-    tempo_preparo TIME,
-    id_categoria INT,
-    id_sub_categoria INT,
-    ativo BIT DEFAULT 1,
-    observacoes TEXT,
-    FOREIGN KEY (id_categoria) REFERENCES Categoria(id_categoria),
-    FOREIGN KEY (id_sub_categoria) REFERENCES Sub_Categoria(id_sub_categoria)
+------------------------------------------------------------------------------
+-- TABLES (PHYSICAL TABLES IN RESTAURANT)
+------------------------------------------------------------------------------
+CREATE TABLE dining_table (
+    table_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_num   INTEGER NOT NULL,
+    seats       INTEGER,
+    available   INTEGER DEFAULT 1
 );
 
-CREATE TABLE Prato_Produto (
-    id_prato INT,
-    id_produto INT,
-    quantidade_utilizada INT,
-    PRIMARY KEY (id_prato, id_produto),
-    FOREIGN KEY (id_prato) REFERENCES Prato(id_prato),
-    FOREIGN KEY (id_produto) REFERENCES Produto(id_produto)
+------------------------------------------------------------------------------
+-- COMANDA (Order session)
+------------------------------------------------------------------------------
+CREATE TABLE comanda (
+    comanda_id      TEXT PRIMARY KEY,      -- UUID string
+    table_id        INTEGER,
+    status          TEXT,                  -- open, closed, canceled
+    opened_at       TEXT DEFAULT CURRENT_TIMESTAMP,
+    closed_at       TEXT,
+    total_amount    REAL DEFAULT 0,
+
+    FOREIGN KEY (table_id) REFERENCES dining_table(table_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
 );
 
-CREATE TABLE Bebida_Produto (
-    id_bebida INT,
-    id_produto INT,
-    quantidade_utilizada INT,
-    PRIMARY KEY (id_bebida, id_produto),
-    FOREIGN KEY (id_bebida) REFERENCES Bebida(id_bebida),
-    FOREIGN KEY (id_produto) REFERENCES Produto(id_produto)
+------------------------------------------------------------------------------
+-- EMPLOYEES & CUSTOMERS
+------------------------------------------------------------------------------
+CREATE TABLE employee (
+    employee_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                TEXT,
+    tax_id              TEXT,
+    address             TEXT,
+    city                TEXT,
+    postal_code         TEXT,
+    phone               TEXT,
+    email               TEXT,
+    role                TEXT,
+    hired_on            TEXT,
+    hourly_rate         REAL
 );
 
-CREATE TABLE Artigo_Produto (
-    id_artigo INT,
-    id_produto INT,
-    quantidade_utilizada INT,
-    PRIMARY KEY (id_artigo, id_produto),
-    FOREIGN KEY (id_artigo) REFERENCES Artigo(id_artigo),
-    FOREIGN KEY (id_produto) REFERENCES Produto(id_produto)
+CREATE TABLE customer (
+    customer_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT,
+    tax_id          TEXT,
+    address         TEXT,
+    city            TEXT,
+    postal_code     TEXT,
+    customer_type   TEXT
 );
 
----
+------------------------------------------------------------------------------
+-- ORDER (Pedido)
+------------------------------------------------------------------------------
+CREATE TABLE order_header (
+    order_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    comanda_id      TEXT NOT NULL,
+    origin          TEXT,                  -- table, takeaway, delivery
+    employee_id     INTEGER,
+    customer_id     INTEGER,
+    created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+    status          TEXT,
+    notes           TEXT,
 
-
-
-CREATE TABLE Mesa (
-    id_mesa INT IDENTITY(1,1) PRIMARY KEY,
-    numero INT,
-    lugares INT,
-    disponivel BIT DEFAULT 1
+    FOREIGN KEY (comanda_id) REFERENCES comanda(comanda_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (employee_id) REFERENCES employee(employee_id)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+    FOREIGN KEY (customer_id) REFERENCES customer(customer_id)
+        ON UPDATE CASCADE ON DELETE SET NULL
 );
 
-CREATE TABLE Comanda (
-    id_comanda UNIQUEIDENTIFIER PRIMARY KEY,
-    id_mesa INT,
-    estado VARCHAR(50), -- aberta, fechada, cancelada
-    data_abertura DATETIME,
-    data_fechamento DATETIME,
-    total DECIMAL(10,2),
-    quantidade_pratos INT,
-    quantidade_bebidas INT,
-    quantidade_artigos INT,
-    FOREIGN KEY (id_mesa) REFERENCES Mesa(id_mesa)
+-- Order Items
+CREATE TABLE order_item (
+    order_item_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id       INTEGER NOT NULL,
+    item_id        INTEGER NOT NULL,
+    quantity       INTEGER NOT NULL,
+    unit_price     REAL,
+    tax_percent    REAL,
+    discount_percent REAL,
+    total_value    REAL,
+    notes          TEXT,
+
+    FOREIGN KEY (order_id) REFERENCES order_header(order_id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (item_id) REFERENCES item(item_id)
+        ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
-abrir pedid -> comanda associada
+------------------------------------------------------------------------------
+-- INVOICE
+------------------------------------------------------------------------------
+CREATE TABLE invoice (
+    invoice_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    comanda_id       TEXT NOT NULL,
+    subtotal         REAL,
+    tax_total        REAL,
+    total_amount     REAL,
+    closed_at        TEXT,
+    tax_food         REAL,
+    tax_drink        REAL,
 
-CREATE TABLE Pedido (
-    id_pedido INT IDENTITY(1,1) PRIMARY KEY,
-    id_comanda UNIQUEIDENTIFIER,
-    origem VARCHAR(50), -- mesa, take-away, delivery
-    id_item_pedido INT,
-    quantidade INT,
-    preco_unitario DECIMAL(10,2),
-    perc_imposto DECIMAL(10,2),
-    perc_desconto DECIMAL(10,2),
-    id_funcionario INT,
-    id_cliente INT,
-    data_hora DATETIME,
-    pedido_estado VARCHAR(50)
-    observacoes TEXT,
-    valor_total DECIMAL(10,2),
-    FOREIGN KEY (id_comanda) REFERENCES Comanda(id_comanda),
-    FOREIGN KEY (id_funcionario) REFERENCES Funcionario(id_funcionario),
-    FOREIGN KEY (id_cliente) REFERENCES Cliente(id_cliente)
+    FOREIGN KEY (comanda_id) REFERENCES comanda(comanda_id)
+        ON UPDATE CASCADE ON DELETE CASCADE
 );
-
-CREATE TABLE Fatura (
-    id_fatura INT IDENTITY(1,1) PRIMARY KEY,
-    id_pedido INT,
-    id_comanda UNIQUEIDENTIFIER,
-    id_cliente INT,
-    valor_sem_imposto DECIMAL(10,2),
-    total_imposto DECIMAL(10,2),
-    tipo_iva_comida DECIMAL(5,2),
-    tipo_iva_bebida DECIMAL(5,2),
-    valor_total DECIMAL(10,2),
-    data_fechamento DATE,
-    FOREIGN KEY (id_pedido) REFERENCES Pedido(id_pedido)
-);
-
-CREATE TABLE Funcionario (
-    id_funcionario INT IDENTITY(1,1) PRIMARY KEY,
-    nome VARCHAR(100),
-    nif VARCHAR(15),
-    morada VARCHAR(255),
-    localidade VARCHAR(100),
-    codigo_postal VARCHAR(20),
-    telefone VARCHAR(20),
-    email VARCHAR(100),
-    cargo VARCHAR(50),
-    data_contratacao DATE,
-    salario_base_hora DECIMAL(10,2)
-);
-
-CREATE TABLE Cliente (
-    id_cliente INT IDENTITY(1,1) PRIMARY KEY,
-    nome VARCHAR(100),
-    nif VARCHAR(15),
-    morada VARCHAR(255),
-    localidade VARCHAR(100),
-    codigo_postal VARCHAR(20),
-    tipo_cliente VARCHAR(50)
-);
-
-CREATE TABLE Fatura (
-    id_fatura INT IDENTITY(1,1) PRIMARY KEY,
-    id_pedido INT,
-    data DATE,
-    valor_total DECIMAL(10,2),
-    valor_iva DECIMAL(10,2),
-    tipo_iva_comida DECIMAL(5,2),
-    tipo_iva_bebida DECIMAL(5,2),
-    FOREIGN KEY (id_pedido) REFERENCES Pedido(id_pedido)
-);
-
