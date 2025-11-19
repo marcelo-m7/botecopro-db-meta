@@ -1,5 +1,5 @@
 -- SQL table for {{ entity.entity }} (schema: {{ entity.schema }})
-CREATE SCHEMA IF NOT EXISTS {{ entity.schema }};
+CREATE table IF NOT EXISTS {{ entity.table }};
 CREATE TABLE IF NOT EXISTS {{ entity.schema }}.{{ entity.entity }} (
 {% for name, attr in entity.attributes.items() -%}
   {{ name }} {{ 'UUID' if attr.type=='uuid' else ('TEXT' if attr.type in ['string','text'] else ('INTEGER' if attr.type=='integer' else ('BOOLEAN' if attr.type=='boolean' else ('DECIMAL(' + (str(attr.precision) if attr.get('precision') else '12') + ',' + (str(attr.scale) if attr.get('scale') else '2') + ')' if attr.type=='decimal' else ('JSONB' if attr.type in ['json','jsonb'] else 'TIMESTAMP'))))) }}{% if attr.get('nullable')==False %} NOT NULL{% endif %}{% if not loop.last %},{% endif %}
