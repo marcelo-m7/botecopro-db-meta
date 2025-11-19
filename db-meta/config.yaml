@@ -1,10 +1,10 @@
 metamodel:
   name: botecopro
   version: 1.0.0
-  source: db-meta/schemas
+  source: schema
   default_schema: public
   dialects:
-    - postgresql
+    - sqlite
     - sqlite
   generated_targets:
     - sql
