@@ -5,3 +5,8 @@ __pycache__/
 *.pyc
 .codemachine/
 .venv/
+.codemachine/logs
+.codemachine/memory
+.codemachine/prompts
+.codemachine/agents
+.codemachine/template.json

@@ -1,8 +1,3 @@
-🎯 Pronto: esse é o metamodelo canônico do BotecoPro.
-
-Ele pode agora ser:
-
-✔ convertido automaticamente em:
 # BotecoPro Metamodel — Canonical Domain Source
 
 This repository contains the canonical metamodel for BotecoPro. The metamodel is intended to be a single source of truth (a single YAML description of the domain) that can be used to generate runtime artifacts and documentation for multiple targets.
