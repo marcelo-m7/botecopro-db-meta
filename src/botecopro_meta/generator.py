@@ -26,6 +26,11 @@ BASE_TYPES = {
     "string": {"python": "str", "sqlalchemy": "String", "sqlite": "TEXT"},
     "text": {"python": "str", "sqlalchemy": "Text", "sqlite": "TEXT"},
     "uuid": {"python": "UUID", "sqlalchemy": "String", "sqlite": "TEXT"},
+    "datetime": {
+        "python": "datetime",
+        "sqlalchemy": "DateTime",
+        "sqlite": "DATETIME",
+    },
     "timestamp": {
         "python": "datetime",
         "sqlalchemy": "DateTime",
