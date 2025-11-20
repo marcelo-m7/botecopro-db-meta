@@ -429,11 +429,16 @@ def render_sql_content(entity: EntityDefinition) -> str:
             )
     lines.append(");")
 
-    for idx_num, idx in enumerate(entity.indexes, start=1):
+    index_counts: Dict[str, int] = {}
+    for idx in entity.indexes:
         unique = "UNIQUE " if idx.get("unique") else ""
         cols = ",".join([f'"{c}"' for c in idx["columns"]])
+        base_name = f"idx_{entity.table}_{'_'.join(idx['columns'])}"
+        count = index_counts.get(base_name, 0)
+        index_name = base_name if count == 0 else f"{base_name}_{count + 1}"
+        index_counts[base_name] = count + 1
         lines.append(
-            f"CREATE {unique}INDEX IF NOT EXISTS idx_{entity.table}_{idx_num} ON {quoted_table} ({cols});"
+            f"CREATE {unique}INDEX IF NOT EXISTS {index_name} ON {quoted_table} ({cols});"
         )
 
     return "\n".join(lines) + "\n"

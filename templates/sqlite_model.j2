@@ -8,7 +8,12 @@ CREATE TABLE IF NOT EXISTS {{ entity.schema }}.{{ entity.entity }} (
 
 {% if entity.get('indexes') %}
 -- Indexes
+{% set ns = namespace(counts={}) %}
 {% for idx in entity.indexes %}
-CREATE {% if idx.get('unique') %}UNIQUE {% endif %}INDEX IF NOT EXISTS idx_{{ entity.entity }}_{{ loop.index }} ON {{ entity.schema }}.{{ entity.entity }} ({{ ','.join(idx.columns) }});
+{% set base_name = 'idx_' ~ entity.entity ~ '_' ~ '_'.join(idx.columns) %}
+{% set count = ns.counts.get(base_name, 0) %}
+{% set index_name = base_name if count == 0 else base_name ~ '_' ~ (count + 1) %}
+{% set _ = ns.counts.__setitem__(base_name, count + 1) %}
+CREATE {% if idx.get('unique') %}UNIQUE {% endif %}INDEX IF NOT EXISTS {{ index_name }} ON {{ entity.schema }}.{{ entity.entity }} ({{ ','.join(idx.columns) }});
 {% endfor %}
 {% endif %}
