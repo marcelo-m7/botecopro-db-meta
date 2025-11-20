@@ -109,7 +109,3 @@ Although this milestone targets Python and SQLite, design the generator with ext
 * A **Dart** generator can reuse the same YAML and produce Freezed/Pydantic classes; the plan in `PLAN.md` outlines the mappings【886825656178662†L318-L336】.
 * A **PostgreSQL** generator may support multi‑schema generation (e.g. `org_{slug}` schemas) and `UUID` types.  Use separate Jinja templates for Postgres.
 * Additional model attributes (e.g. `updated_at` triggers, check constraints) can be described in the YAML and implemented in templates.
-
----
-
-This specification is based on the draft and examples provided in the existing meta‑repository.  In particular, the high‑level YAML structure and example tables in `PLAN.md`【886825656178662†L112-L178】 illustrate how entities should be defined, and the meta‑repository README explains the directory structure (`db-meta/schemas`, `relations.yaml`, `templates/`, `generator.py`)【875632390543743†L5-L11】.  Use these references to inform your implementation while adapting them for SQLite and modern Python practices.
