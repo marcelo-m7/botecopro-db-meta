@@ -1,0 +1,13 @@
+"""Auto-generated package containing SQLAlchemy models."""
+from __future__ import annotations
+
+from .base import Base
+from . import enums
+{% for entity in entities %}from .{{ entity.table }} import {{ entity.name }}
+{% endfor %}
+
+__all__ = [
+    "Base",
+    "enums",
+{% for entity in entities %}    "{{ entity.name }}",
+{% endfor %}]

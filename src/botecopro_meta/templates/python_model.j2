@@ -1,0 +1,35 @@
+"""SQLAlchemy model for {{ entity.name }}."""
+from __future__ import annotations
+
+from typing import Optional
+from datetime import datetime
+from decimal import Decimal
+from uuid import UUID
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    Enum as SAEnum,
+)
+
+from .base import Base
+from . import enums
+
+
+class {{ entity.name }}(Base):
+    """{{ entity.name }} table mapped to {{ entity.table }}."""
+
+    __tablename__ = "{{ entity.table }}"
+
+{% for attr in entity.attributes %}
+    {{ attr.name }}: {% if attr.nullable %}Optional[{{ attr.python_type }}]{% else %}{{ attr.python_type }}{% endif %} = Column(
+        {% if attr.enum %}SAEnum(enums.{{ attr.enum }}){% else %}{{ attr.sqlalchemy_type }}{% endif %}{% if attr.relation %}, ForeignKey("{{ attr.relation[0] }}.{{ attr.relation[1] }}"){% endif %}{% if attr.primary_key %}, primary_key=True{% endif %}{% if attr.autoincrement %}, autoincrement=True{% endif %}{% if not attr.nullable %}, nullable=False{% endif %}{% if attr.default is not none %}, default={{ attr.default }}{% endif %}
+    )
+{% endfor %}

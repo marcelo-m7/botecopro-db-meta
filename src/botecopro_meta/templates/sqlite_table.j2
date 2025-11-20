@@ -1,0 +1,25 @@
+-- Auto-generated SQLite DDL for {{ entity.table }}
+CREATE TABLE IF NOT EXISTS "{{ entity.table }}" (
+{% set pk_columns = entity.attributes | selectattr('primary_key') | map(attribute='name') | list %}
+{% set column_defs = [] %}
+{% for attr in entity.attributes %}
+{% set col = '"' + attr.name + '" ' + attr.sqlite_type %}
+{% if attr.enum_values %}{% set col = col + ' CHECK ("' + attr.name + '" IN (' + ', '.join("'" + v + "'" for v in attr.enum_values) + '))' %}{% endif %}
+{% if attr.primary_key and attr.autoincrement and pk_columns|length == 1 %}{% set col = '"' + attr.name + '" INTEGER PRIMARY KEY AUTOINCREMENT' %}{% elif attr.primary_key %}{% set col = col + ' NOT NULL' %}{% endif %}
+{% if not attr.primary_key and not attr.nullable %}{% set col = col + ' NOT NULL' %}{% endif %}
+{% if attr.raw.get('default') is not none %}
+{% set default_val = attr.raw.get('default') %}
+{% if default_val is string %}{% set default_literal = "'" + default_val + "'" %}{% elif default_val is boolean %}{% set default_literal = '1' if default_val else '0' %}{% else %}{% set default_literal = default_val %}{% endif %}
+{% set col = col + ' DEFAULT ' + default_literal|string %}
+{% endif %}
+{% set _ = column_defs.append(col) %}
+{% endfor %}
+  {{ column_defs | join(',\n  ') }}{% if pk_columns|length > 1 %},
+  PRIMARY KEY({% for pk in pk_columns %}"{{ pk }}"{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}{% set fks = entity.attributes | selectattr('relation') | list %}{% if fks %},
+{% for fk in fks %}{% set rel = fk.relation %}  FOREIGN KEY ("{{ fk.name }}") REFERENCES "{{ rel[0] }}"("{{ rel[1] }}"){% if not loop.last %},
+{% endif %}{% endfor %}{% endif %}
+);
+{% if entity.indexes %}
+-- Indexes
+{% for idx in entity.indexes %}CREATE {% if idx.get('unique') %}UNIQUE {% endif %}INDEX IF NOT EXISTS idx_{{ entity.table }}_{{ loop.index }} ON "{{ entity.table }}" ({{ ','.join('"' + c + '"' for c in idx.columns) }});
+{% endfor %}{% endif %}

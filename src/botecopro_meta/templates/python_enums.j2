@@ -1,0 +1,16 @@
+"""Auto-generated enumerations for the BotecoPro domain."""
+from __future__ import annotations
+
+from enum import Enum
+
+
+{% for enum in enums.values() %}
+class {{ enum.name }}(str, Enum):
+    {% for val in enum.values %}{{ val.upper().replace('-', '_') }} = "{{ val }}"
+    {% endfor %}
+
+
+{% endfor %}
+__all__ = [
+{% for enum in enums.values() %}    "{{ enum.name }}",
+{% endfor %}]
