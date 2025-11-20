@@ -3,6 +3,7 @@ import py_compile
 import sqlite3
 
 from botecopro_meta.generator import generate
+from botecopro_meta.generator import DomainLoader
 
 
 def test_generate_outputs(tmp_path: Path) -> None:
@@ -42,3 +43,18 @@ def test_generate_outputs(tmp_path: Path) -> None:
     assert any(fk[2] == "order" for fk in fk_list)
 
     conn.close()
+
+
+def test_custom_datetime_base_type_mapping() -> None:
+    domain_path = Path(__file__).resolve().parent.parent / "db-meta" / "tables" / "001_domain.yaml"
+
+    loader = DomainLoader(domain_path)
+    domain = loader.load()
+
+    product = next(entity for entity in domain.entities if entity.name == "Product")
+    last_modified = next(attr for attr in product.attributes if attr.name == "last_modified")
+
+    assert last_modified.base_type == "datetime"
+    assert last_modified.python_type == "datetime"
+    assert last_modified.sqlalchemy_type == "DateTime"
+    assert last_modified.sqlite_type == "DATETIME"
