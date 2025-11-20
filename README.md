@@ -4,14 +4,11 @@ BotecoPro metamodel - DRAFT
 Location: /mnt/data/botecopro-db-meta
 
 Structure:
-- db-meta/schemas: YAML definitions per entity (schemas grouped by folder)
-- db-meta/relations.yaml: top-level relations map
-- db-meta/enums.yaml: enums used across the model
-- db-meta/config.yaml: metamodel configuration
-- templates/: Jinja2 templates for Python(SQLModel), Postgres SQL and Dart
-- generator.py: simple generator example that renders templates
+- db-meta/schemas/001_domain.yaml: single YAML domain definition (entities, types, enums)
+- templates/: Jinja2 templates for SQLAlchemy models and SQLite DDL
+- generator.py: generator that renders the templates for each entity
 
 How to use:
-1. Install dependencies: pip install pyyaml jinja2 sqlmodel
-2. Run: python generator.py
-3. Check generated/ for output files (models and SQL)
+1. Install dependencies: `pip install -r requirements.txt`
+2. Run the generator: `python generator.py`
+3. Check `generated/` for the auto-created SQLAlchemy models (under `generated/python`) and SQLite DDL (under `generated/sql`).

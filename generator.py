@@ -1,59 +1,307 @@
+from __future__ import annotations
+
 import os
 import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import yaml
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from yaml import YAMLError
 
-BASE = os.path.dirname(__file__)
-TEMPLATE_DIR = os.path.join(BASE, 'templates')
-
-env = Environment(loader=FileSystemLoader(TEMPLATE_DIR))
+BASE = Path(__file__).parent
+TEMPLATE_DIR = BASE / "templates"
 
 
-def load_domain(path: str) -> dict:
-    domain = {
-        'enums': {},
-        'entities': {},
-        'types': {},
-        'metadata': {},
-        'targets': {},
+@dataclass
+class EnumDef:
+    name: str
+    values: List[str]
+
+
+@dataclass
+class Attribute:
+    name: str
+    type_name: str
+    base_type: str
+    py_type_hint: str
+    sa_type: str
+    sql_type: str
+    nullable: bool
+    primary_key: bool
+    autoincrement: bool
+    default: Optional[Any]
+    default_sql: Optional[str]
+    column_args: str
+    sql_line: str
+    foreign_key: Optional[str]
+    enum: Optional[str] = None
+    enum_values: Optional[List[str]] = None
+
+
+@dataclass
+class Entity:
+    name: str
+    table: str
+    attributes: List[Attribute]
+    indexes: List[Dict[str, Any]]
+    foreign_keys: List[str]
+    composite_primary_keys: List[str]
+
+
+class DomainLoader:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def load(self) -> Dict[str, Any]:
+        try:
+            with self.path.open("r") as fh:
+                content = yaml.safe_load(fh)
+        except YAMLError as exc:
+            raise RuntimeError(f"Failed to parse YAML file {self.path}: {exc}") from exc
+
+        if not content or "botecopro_domain" not in content:
+            raise RuntimeError(f"No botecopro_domain entry found in {self.path}")
+
+        domain = content["botecopro_domain"]
+        for section in ("entities", "enums", "types"):
+            domain.setdefault(section, {})
+        return domain
+
+
+def resolve_base_type(type_name: str, types: Dict[str, Any]) -> str:
+    if type_name in {"enum", "relation"}:
+        return type_name
+    custom = types.get(type_name)
+    if isinstance(custom, dict) and "base" in custom:
+        return str(custom["base"])
+    return type_name
+
+
+def python_type_for(base_type: str, enum: Optional[str] = None) -> str:
+    mapping = {
+        "int": "int",
+        "integer": "int",
+        "float": "float",
+        "decimal": "Decimal",
+        "bool": "bool",
+        "boolean": "bool",
+        "string": "str",
+        "text": "str",
+        "uuid": "uuid.UUID",
+        "timestamp": "datetime",
     }
-    found = False
-
-    for root, _, files in os.walk(path):
-        for fn in files:
-            if not fn.endswith('.yaml'):
-                continue
-            file_path = os.path.join(root, fn)
-            try:
-                with open(file_path, 'r') as fh:
-                    content = yaml.safe_load(fh)
-            except YAMLError as exc:
-                raise RuntimeError(f"Failed to parse YAML file {file_path}: {exc}") from exc
-
-            if not content or 'botecopro_domain' not in content:
-                continue
-
-            found = True
-            domain_data = content.get('botecopro_domain')
-            if not isinstance(domain_data, dict):
-                raise RuntimeError(f"'botecopro_domain' in {file_path} must be a mapping")
-
-            for section in ('enums', 'entities', 'types'):
-                domain[section].update(domain_data.get(section, {}) or {})
-
-            domain['metadata'].update(domain_data.get('metadata', {}) or {})
-            domain['targets'].update(domain_data.get('targets', {}) or {})
-
-    if not found:
-        raise RuntimeError(f"No botecopro_domain entries found under {path}")
-    if not domain['entities']:
-        raise RuntimeError("No entities defined in botecopro_domain schemas")
-
-    return domain
+    if enum:
+        return enum
+    return mapping.get(base_type, "str")
 
 
-def render_template(name: str, ctx: dict) -> str:
+def sqlalchemy_type_for(base_type: str, attr: Dict[str, Any], enum: Optional[str] = None) -> str:
+    if enum:
+        return f"SAEnum({enum})"
+
+    if base_type in {"int", "integer"}:
+        return "Integer"
+    if base_type == "float":
+        return "Float"
+    if base_type in {"bool", "boolean"}:
+        return "Boolean"
+    if base_type in {"string", "text"}:
+        return "String"
+    if base_type == "uuid":
+        return "String"
+    if base_type == "timestamp":
+        return "DateTime"
+    if base_type == "decimal":
+        precision = attr.get("precision", 10)
+        scale = attr.get("scale", 2)
+        return f"Numeric({precision}, {scale})"
+    return "String"
+
+
+def sqlite_type_for(base_type: str, attr: Dict[str, Any], enum_values: Optional[List[str]] = None) -> str:
+    if base_type in {"int", "integer"}:
+        return "INTEGER"
+    if base_type == "float":
+        return "REAL"
+    if base_type in {"bool", "boolean"}:
+        return "BOOLEAN"
+    if base_type in {"string", "text"}:
+        return "TEXT"
+    if base_type == "uuid":
+        return "TEXT"
+    if base_type == "timestamp":
+        return "DATETIME"
+    if base_type == "decimal":
+        precision = attr.get("precision", 10)
+        scale = attr.get("scale", 2)
+        return f"NUMERIC({precision},{scale})"
+    if enum_values is not None:
+        return "TEXT"
+    return "TEXT"
+
+
+def format_python_default(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return repr(value)
+    return repr(value)
+
+
+def format_sql_default(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return f"'{value}'"
+
+
+def make_column_args(attr: Dict[str, Any], sa_type: str, foreign_key: Optional[str]) -> str:
+    args: List[str] = [sa_type]
+    if foreign_key:
+        args.append(f"ForeignKey('{foreign_key}')")
+
+    kwargs: List[str] = []
+    if attr.get("primary_key"):
+        kwargs.append("primary_key=True")
+    if attr.get("autoincrement"):
+        kwargs.append("autoincrement=True")
+    if attr.get("nullable") is False:
+        kwargs.append("nullable=False")
+    default_repr = format_python_default(attr.get("default"))
+    if default_repr is not None:
+        kwargs.append(f"default={default_repr}")
+
+    return ", ".join(args + kwargs)
+
+
+def make_sql_line(
+    name: str,
+    sql_type: str,
+    attr: Dict[str, Any],
+    enum_values: Optional[List[str]],
+    composite_primary: bool,
+) -> str:
+    primary = attr.get("primary_key", False)
+    autoinc = attr.get("autoincrement", False)
+
+    if (
+        primary
+        and autoinc
+        and sql_type == "INTEGER"
+        and not composite_primary
+    ):
+        return f"{name} INTEGER PRIMARY KEY AUTOINCREMENT"
+
+    parts = [name, sql_type]
+    if primary and not composite_primary:
+        parts.append("PRIMARY KEY")
+    if attr.get("nullable") is False:
+        parts.append("NOT NULL")
+    default_sql = format_sql_default(attr.get("default"))
+    if default_sql:
+        parts.append(f"DEFAULT {default_sql}")
+    if enum_values:
+        allowed = ", ".join(f"'{val}'" for val in enum_values)
+        parts.append(f"CHECK ({name} IN ({allowed}))")
+    return " ".join(parts)
+
+
+def resolve_entities(domain: Dict[str, Any]) -> List[Entity]:
+    enums = domain.get("enums", {})
+    types = domain.get("types", {})
+    entities_data = domain.get("entities", {})
+
+    entities: List[Entity] = []
+    for entity_name, data in entities_data.items():
+        storage = data.get("storage", {}) or {}
+        table = storage.get("table", entity_name.lower())
+        raw_attrs = data.get("attributes", {}) or {}
+        indexes = data.get("indexes", []) or []
+
+        composite_primary_keys = [name for name, attr in raw_attrs.items() if attr.get("primary_key")]
+        composite_primary = len(composite_primary_keys) > 1
+        attrs: List[Attribute] = []
+        foreign_keys: List[str] = []
+
+        for attr_name, attr in raw_attrs.items():
+            attr_type = attr.get("type")
+            enum_name = attr.get("enum") if attr_type == "enum" else None
+            enum_values = enums.get(enum_name, []) if enum_name else None
+
+            if attr_type == "relation":
+                target = attr.get("target")
+                target_field = attr.get("target_field", "id")
+                target_entity = entities_data.get(target, {})
+                target_storage = target_entity.get("storage", {}) or {}
+                target_table = target_storage.get("table", (target or "").lower())
+                fk = f"{target_table}.{target_field}"
+                target_attrs = target_entity.get("attributes", {})
+                target_attr = target_attrs.get(target_field, {})
+                base_type = resolve_base_type(target_attr.get("type", "string"), types)
+            else:
+                fk = None
+                base_type = resolve_base_type(attr_type, types)
+
+            sa_type = sqlalchemy_type_for(base_type, attr, enum_name)
+            sql_type = sqlite_type_for(base_type, attr, enum_values)
+            py_type = python_type_for(base_type, enum_name)
+
+            nullable = attr.get("nullable")
+            if nullable is None:
+                nullable = not attr.get("required", False)
+
+            py_type_hint = py_type
+            if nullable:
+                py_type_hint = f"Optional[{py_type}]"
+
+            column_args = make_column_args(attr, sa_type, fk)
+            sql_line = make_sql_line(attr_name, sql_type, attr, enum_values, composite_primary)
+
+            if fk:
+                foreign_keys.append(fk)
+
+            attrs.append(
+                Attribute(
+                    name=attr_name,
+                    type_name=attr_type,
+                    base_type=base_type,
+                    py_type_hint=py_type_hint,
+                    sa_type=sa_type,
+                    sql_type=sql_type,
+                    nullable=bool(nullable),
+                    primary_key=bool(attr.get("primary_key", False)),
+                    autoincrement=bool(attr.get("autoincrement", False)),
+                    default=attr.get("default"),
+                    default_sql=format_sql_default(attr.get("default")),
+                    column_args=column_args,
+                    sql_line=sql_line,
+                    foreign_key=fk,
+                    enum=enum_name,
+                    enum_values=enum_values,
+                )
+            )
+
+        entities.append(
+            Entity(
+                name=entity_name,
+                table=table,
+                attributes=attrs,
+                indexes=indexes,
+                foreign_keys=foreign_keys,
+                composite_primary_keys=composite_primary_keys,
+            )
+        )
+
+    return entities
+
+
+def render_template(name: str, ctx: Dict[str, Any]) -> str:
+    env = Environment(loader=FileSystemLoader(TEMPLATE_DIR))
     try:
         template = env.get_template(name)
     except TemplateNotFound as exc:
@@ -61,51 +309,41 @@ def render_template(name: str, ctx: dict) -> str:
     return template.render(ctx)
 
 
-def build_entity_contexts(domain: dict) -> list:
-    default_schema = domain.get('metadata', {}).get('default_schema', 'main')
-    contexts = []
-    for entity_name, entity_data in domain.get('entities', {}).items():
-        storage = entity_data.get('storage', {}) or {}
-        attributes = entity_data.get('attributes', {}) or {}
-        contexts.append({
-            'entity': entity_name,
-            'table': storage.get('table', entity_name.lower()),
-            'schema': storage.get('schema', default_schema),
-            'attributes': attributes,
-            'indexes': entity_data.get('indexes', []),
-            'storage': storage,
-            'types': domain.get('types', {}),
-            'enums': domain.get('enums', {}),
-        })
-    return contexts
+def write_output(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as fh:
+        fh.write(content)
 
 
 def main() -> None:
-    schema_dir = os.path.join(BASE, 'db-meta', 'schemas')
-    domain = load_domain(schema_dir)
-    entities = build_entity_contexts(domain)
+    domain_path = BASE / "db-meta" / "schemas" / "001_domain.yaml"
+    loader = DomainLoader(domain_path)
+    domain = loader.load()
 
-    out_dir = os.path.join(BASE, 'generated')
-    python_out = os.path.join(out_dir, 'python')
-    sql_out = os.path.join(out_dir, 'sql')
-    os.makedirs(python_out, exist_ok=True)
-    os.makedirs(sql_out, exist_ok=True)
+    enums = [EnumDef(name=k, values=v) for k, v in (domain.get("enums", {}) or {}).items()]
+    entities = resolve_entities(domain)
+
+    out_dir = BASE / "generated"
+    python_out = out_dir / "python"
+    sql_out = out_dir / "sql"
 
     for entity in entities:
-        ctx = {'entity': entity, 'enums': domain.get('enums', {}), 'types': domain.get('types', {})}
+        used_enums = [enum for enum in enums if any(attr.enum == enum.name for attr in entity.attributes)]
+        ctx = {
+            "entity": entity,
+            "enums": used_enums,
+        }
 
-        python_rendered = render_template('python_sqlmodel.j2', ctx)
-        with open(os.path.join(python_out, f"{entity['entity'].lower()}_model.py"), 'w') as fh:
-            fh.write(python_rendered)
+        python_rendered = render_template("python_sqlalchemy.j2", ctx)
+        write_output(python_out / f"{entity.name.lower()}_model.py", python_rendered)
 
-        sql_rendered = render_template('sqlite_model.j2', ctx)
-        with open(os.path.join(sql_out, f"{entity['entity'].lower()}_table.sql"), 'w') as fh:
-            fh.write(sql_rendered)
+        sql_rendered = render_template("sqlite_table.j2", ctx)
+        write_output(sql_out / f"{entity.name.lower()}_table.sql", sql_rendered)
 
-    print('Generated', len(entities), 'models')
+    print(f"Generated {len(entities)} models")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except Exception as exc:

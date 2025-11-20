@@ -1,0 +1,20 @@
+-- SQLite table for {{ entity.name }} (table: {{ entity.table }})
+{% set lines = [] -%}
+{% for attr in entity.attributes -%}
+{% set _ = lines.append(attr.sql_line) -%}
+{% endfor -%}
+{% for attr in entity.attributes if attr.foreign_key -%}
+{% set _ = lines.append("FOREIGN KEY (" ~ attr.name ~ ") REFERENCES " ~ attr.foreign_key) -%}
+{% endfor -%}
+{% if entity.composite_primary_keys|length > 1 -%}
+{% set _ = lines.append("PRIMARY KEY (" ~ (entity.composite_primary_keys | join(', ')) ~ ")") -%}
+{% endif -%}
+CREATE TABLE IF NOT EXISTS {{ entity.table }} (
+  {{ lines | join(',\n  ') }}
+);
+{% if entity.indexes %}
+-- Indexes
+{% for idx in entity.indexes -%}
+CREATE {% if idx.get('unique') %}UNIQUE {% endif %}INDEX IF NOT EXISTS idx_{{ entity.table }}_{{ loop.index }} ON {{ entity.table }} ({{ idx['columns'] | join(', ') }});
+{% endfor -%}
+{% endif %}
